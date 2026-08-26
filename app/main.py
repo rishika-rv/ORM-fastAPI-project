@@ -2,7 +2,7 @@ from fastapi import Depends, FastAPI ,HTTPException
 from sqlalchemy.orm import Session
 from .database import Base, engine, get_db
 from .import models
-from .schemas import UserCreate, UserResponse
+from .schemas import UserCreate, UserResponse, UserUpdate
 from sqlalchemy import select
 
 app = FastAPI(
@@ -12,12 +12,6 @@ app = FastAPI(
 )
 
 Base.metadata.create_all(bind=engine)
-
-@app.get("/")
-def root():
-    return {
-        "message": "ORM API is running"
-    }
 
 @app.get("/users", response_model=list[UserResponse])
 def get_users(db: Session = Depends(get_db)):
@@ -48,18 +42,37 @@ def get_user(
 
     return user
 
-@app.get("/db-test")
-def database_test(db: Session = Depends(get_db)):
-    return {
 
-        "message": "Database session created successfully"
+@app.put("/users/{user_id}", response_model=UserResponse)
+def update_user(
+    user_id: int,
+    user_data: UserUpdate,
+    db: Session = Depends(get_db)):
 
-    }
+    stmt = select(models.User).where(
+        models.User.id == user_id
+    )
+    result = db.execute(stmt)
+    user = result.scalar_one_or_none()
+
+    if user is None:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found"
+        )
+
+    user.name = user_data.name
+    user.email = user_data.email
+    user.age = user_data.age
+
+    db.commit()
+    db.refresh(user)
+
+    return user
 
 
 @app.post("/users", response_model=UserResponse)
 def create_user(
-
     user: UserCreate,
     db: Session = Depends(get_db)
 
@@ -77,3 +90,27 @@ def create_user(
     db.refresh(new_user)
 
     return new_user
+
+
+@app.delete("/users/{user_id}")
+def delete_user(
+    user_id: int,
+    db: Session = Depends(get_db)
+):
+    stmt = select(models.User).where(
+        models.User.id == user_id)
+    result = db.execute(stmt)
+    user = result.scalar_one_or_none()
+
+    if user is None:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found"
+        )
+
+    db.delete(user)
+    db.commit()
+
+    return {
+        "message": "User deleted successfully"
+    }
