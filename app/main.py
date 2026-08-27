@@ -2,7 +2,7 @@ from fastapi import Depends, FastAPI ,HTTPException
 from sqlalchemy.orm import Session
 from .database import Base, engine, get_db
 from .import models
-from .schemas import UserCreate, UserResponse, UserUpdate
+from .schemas import UserCreate, UserResponse, UserUpdate, OrderCreate, OrderResponse
 from sqlalchemy import select
 
 app = FastAPI(
@@ -114,3 +114,51 @@ def delete_user(
     return {
         "message": "User deleted successfully"
     }
+
+@app.post("/orders", response_model=OrderResponse)
+def create_order(
+    order: OrderCreate,
+    db: Session = Depends(get_db)
+):
+    user = db.get(models.User, order.user_id)
+
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found"
+        )
+
+    new_order = models.Order(
+        product=order.product,
+        price=order.price,
+        user_id=order.user_id
+    )
+
+    db.add(new_order)
+    db.commit()
+    db.refresh(new_order)
+
+    return new_order
+
+@app.get("/users-with-orders")
+def users_with_orders(
+    db: Session = Depends(get_db)
+):
+    stmt = (
+        select(models.User, models.Order)
+        .join(
+            models.Order,
+            models.User.id == models.Order.user_id
+        )
+    )
+
+    result = db.execute(stmt)
+    rows = result.all()
+
+    return [
+        {
+            "user": user,
+            "order": order
+        }
+        for user, order in rows
+    ]

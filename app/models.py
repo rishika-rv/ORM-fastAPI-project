@@ -1,7 +1,7 @@
 from datetime import datetime
 
-from sqlalchemy import String, DateTime
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import String, DateTime , Integer, ForeignKey, Column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
 
@@ -21,5 +21,17 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(
     DateTime,
     default=datetime.utcnow)
+    orders = relationship("Order", back_populates="user")
 
- 
+class Order(Base):
+    __tablename__ = "orders"
+
+    id = Column(Integer, primary_key=True, index=True)
+    product = Column(String)
+    price = Column(Integer)
+    user_id = Column(Integer, ForeignKey("users.id"))
+
+    user = relationship("User", back_populates="orders")
+
+
+

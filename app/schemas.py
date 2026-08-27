@@ -22,3 +22,16 @@ class UserUpdate(BaseModel):
     name: str
     email: str
     age: int
+
+class OrderCreate(BaseModel):
+   product: str
+   price: int
+   user_id: int
+
+class OrderResponse(BaseModel):
+    id: int
+    product: str
+    price: int
+    user_id: int
+    class Config:
+        from_attributes = True
