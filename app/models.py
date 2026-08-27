@@ -10,6 +10,10 @@ class User(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
 
     name: Mapped[str] = mapped_column(String(100))
+    phone: Mapped[str | None] = mapped_column(
+    String(20),
+    nullable=True
+)
 
     email: Mapped[str] = mapped_column(
     String(150),
