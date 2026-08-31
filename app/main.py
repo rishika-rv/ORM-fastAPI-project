@@ -1,3 +1,4 @@
+from redis.exceptions import RedisError
 from fastapi import Depends, FastAPI ,HTTPException
 from sqlalchemy.orm import Session
 from .database import Base, engine, get_db
@@ -15,6 +16,46 @@ app = FastAPI(
 
 # Base.metadata.create_all(bind=engine)
 
+@app.get("/users", response_model=list[UserResponse])
+def get_users(db: Session = Depends(get_db)):
+
+    cache_key = "users:all"
+
+    try:
+        cached_user = redis_client.get(cache_key)
+        if cached_user:
+            print(f"REDIS CACHE HIT: {cache_key}")
+            return json.loads(cached_user)
+
+        print(f"REDIS CACHE MISS: {cache_key}")
+
+    except RedisError:
+    # Redis unavailable - continue to database
+        pass
+
+    # Cache miss -> query database
+    stmt = select(models.User)
+    result = db.execute(stmt)
+    users = result.scalars().all()
+
+    # Convert SQLAlchemy objects to Pydantic
+    users_data = [
+        UserResponse.model_validate(user)
+        for user in users
+    ]
+
+    # Store list in Redis for 60 seconds
+    try:
+        redis_client.set(
+            cache_key,
+            users_data.model_dump_json(),
+            ex=60
+        )
+    except RedisError:
+        pass
+
+    return users_data
+
 @app.get("/users/{user_id}", response_model=UserResponse)
 def get_user(
     user_id: int,
@@ -23,10 +64,16 @@ def get_user(
     cache_key = f"user:{user_id}"
 
     # Check Redis first
-    cached_user = redis_client.get(cache_key)
+    try:
+        cached_user = redis_client.get(cache_key)
 
-    if cached_user:
-        return json.loads(cached_user)
+        if cached_user:
+            print(f"REDIS CACHE HIT: {cache_key}")
+            return json.loads(cached_user)
+
+        print(f"REDIS CACHE MISS: {cache_key}")
+    except RedisError:
+        pass
 
     # Cache miss -> database
     stmt = select(models.User).where(
@@ -82,6 +129,7 @@ def update_user(
 
     # Invalidate Redis cache
     redis_client.delete(f"user:{user_id}")
+    redis_client.delete("users:all")
 
     return user
  
@@ -102,6 +150,10 @@ def create_user(
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
+
+    # Invalidate users list cache
+
+    redis_client.delete("users:all")
 
     return new_user
 
@@ -125,6 +177,7 @@ def delete_user(
     db.delete(user)
     db.commit()
     redis_client.delete(f"user:{user_id}")
+    redis_client.delete("users:all")
 
     return {
         "message": "User deleted successfully"
